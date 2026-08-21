@@ -15,6 +15,17 @@ import {
   FileSpreadsheet,
   Calendar,
   Calculator,
+  FileText,
+  Activity,
+  DownloadCloud,
+  Building2,
+  Building,
+  Camera,
+  ClipboardCheck,
+  ShieldAlert,
+  Target,
+  Bell,
+  LifeBuoy,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -57,18 +68,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const mainNav = [
     { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
-    { id: 'plan', label: language === 'mr' ? 'दैनिक दौरा नियोजन' : 'Daily Tour Diary', icon: Calendar },
+    { id: 'centers', label: language === 'mr' ? 'लिंक व संकलन केंद्रे' : 'Link & Collection Centers', icon: Building2 },
+    { id: 'gotha_surveys', label: language === 'mr' ? 'गोठा पाहणी व जनावरे' : 'Cattle Shed (Gotha) Surveys', icon: Building },
+    { id: 'daily_tour_plan', label: language === 'mr' ? 'दैनिक दौरा नियोजन (DTP)' : 'Daily Tour Diary & Visits', icon: Route },
+    { id: 'mpo_attendance', label: language === 'mr' ? 'MPO फील्ड हजेरी व GPS' : 'MPO Attendance & Selfie', icon: Camera },
+    { id: 'inspections', label: language === 'mr' ? 'तपासणी व गुणवत्ता ऑडिट' : 'Quality & Field Audits', icon: ClipboardCheck },
+    { id: 'fssai_compliance', label: language === 'mr' ? 'FSSAI परवाना ट्रॅकर' : 'FSSAI License Compliance', icon: ShieldAlert },
+    { id: 'competitors', label: language === 'mr' ? 'स्पर्धक डेअरी विश्लेषण' : 'Competitor Dairy Intel', icon: Target },
+    { id: 'notices', label: language === 'mr' ? 'परिपत्रके व नोटीस' : 'Circulars & Notices', icon: Bell },
+    { id: 'complaints_tasks', label: language === 'mr' ? 'शेतकरी तक्रारी व टास्क्स' : 'Grievances & Tasks', icon: LifeBuoy },
+    { id: 'daily_report', label: language === 'mr' ? 'दैनिक कार्य अहवाल' : 'Daily Work Report', icon: FileText },
     { id: 'calls', label: t('nav.calls'), icon: PhoneCall },
-    { id: 'incoming', label: t('nav.incoming'), icon: PhoneIncoming },
+    { id: 'producer_communication', label: language === 'mr' ? 'उत्पादक संपर्क व कॉल ट्रॅकिंग' : 'Producer Communication & Calls', icon: Sparkles },
+    { id: 'call_history', label: language === 'mr' ? 'कॉल इतिहास व ट्रॅकर' : 'Call History Tracker', icon: PhoneIncoming },
     { id: 'farmers', label: t('nav.farmers'), icon: Users },
+    { id: 'producer_surveys', label: language === 'mr' ? 'उत्पादक सर्वेक्षण व डिव्हाइस' : 'Producer Surveys & IoT Devices', icon: FileSpreadsheet },
     { id: 'routes', label: t('nav.routes'), icon: Route },
     { id: 'tasks', label: t('nav.tasks'), icon: ClipboardList },
     { id: 'followups', label: t('nav.followups'), icon: CalendarCheck },
+    { id: 'rate_chart', label: language === 'mr' ? 'मास्टर दर पत्रक संरचना' : 'Master Rate Chart', icon: Calculator },
+    { id: 'download_center', label: language === 'mr' ? 'डाउनलोड सेंटर' : 'Download Center', icon: DownloadCloud },
     { id: 'reports', label: t('nav.reports'), icon: BarChart3 },
   ];
 
   const adminNav = [
-    { id: 'users', label: t('nav.users'), icon: ShieldCheck },
+    { id: 'activity_log', label: language === 'mr' ? 'कृती ट्रॅकिंग (Audit Log)' : 'Auto Activity Tracking', icon: Activity },
+    { id: 'admin_monitoring', label: language === 'mr' ? 'थेट टीम मॉनिटरिंग' : 'Live Team Monitoring', icon: ShieldCheck },
+    { id: 'users', label: t('nav.users'), icon: Users },
   ];
 
   const handleNavClick = (id: string) => {

@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
@@ -269,6 +270,402 @@ Respond in JSON:
 
   // In-memory Server-side Task Store for multi-device sync
   let serverTasksStore: any[] = [];
+  let serverActivitiesStore: any[] = [];
+  let serverCallHistoryStore: any[] = [];
+  let serverDailyReportsStore: any[] = [];
+  let serverBackupSnapshots: any[] = [];
+  let serverSyncStore: Record<string, any> = {};
+
+  // Rate Chart Server-Side Persistent File Storage
+  const DATA_DIR = path.join(process.cwd(), 'data');
+  const RATE_CHART_FILE = path.join(DATA_DIR, 'rate_chart_master.json');
+  const RATE_HISTORY_FILE = path.join(DATA_DIR, 'rate_chart_history.json');
+  const PRODUCER_CALLS_FILE = path.join(DATA_DIR, 'producer_communication_calls.json');
+  const PRODUCER_CAMPAIGNS_FILE = path.join(DATA_DIR, 'producer_communication_campaigns.json');
+
+  if (!fs.existsSync(DATA_DIR)) {
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch (e) {
+      console.warn('Could not create data dir:', e);
+    }
+  }
+
+  let serverActiveRateChart: any = null;
+  let serverRateChartHistory: any[] = [];
+  let serverProducerCallsStore: any[] = [];
+  let serverProducerCampaignsStore: any[] = [];
+
+  // Load from disk on startup if exists
+  try {
+    if (fs.existsSync(RATE_CHART_FILE)) {
+      serverActiveRateChart = JSON.parse(fs.readFileSync(RATE_CHART_FILE, 'utf-8'));
+    }
+    if (fs.existsSync(RATE_HISTORY_FILE)) {
+      serverRateChartHistory = JSON.parse(fs.readFileSync(RATE_HISTORY_FILE, 'utf-8'));
+    }
+    if (fs.existsSync(PRODUCER_CALLS_FILE)) {
+      serverProducerCallsStore = JSON.parse(fs.readFileSync(PRODUCER_CALLS_FILE, 'utf-8'));
+    }
+    if (fs.existsSync(PRODUCER_CAMPAIGNS_FILE)) {
+      serverProducerCampaignsStore = JSON.parse(fs.readFileSync(PRODUCER_CAMPAIGNS_FILE, 'utf-8'));
+    }
+  } catch (err) {
+    console.warn('Could not read persistent files on startup:', err);
+  }
+
+  const saveRateChartToDisk = () => {
+    try {
+      if (serverActiveRateChart) {
+        fs.writeFileSync(RATE_CHART_FILE, JSON.stringify(serverActiveRateChart, null, 2), 'utf-8');
+      }
+      if (serverRateChartHistory && serverRateChartHistory.length > 0) {
+        fs.writeFileSync(RATE_HISTORY_FILE, JSON.stringify(serverRateChartHistory, null, 2), 'utf-8');
+      }
+    } catch (err) {
+      console.error('Error writing rate chart to disk:', err);
+    }
+  };
+
+  const saveProducerCallsToDisk = () => {
+    try {
+      fs.writeFileSync(PRODUCER_CALLS_FILE, JSON.stringify(serverProducerCallsStore, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('Error writing producer calls to disk:', err);
+    }
+  };
+
+  const saveProducerCampaignsToDisk = () => {
+    try {
+      fs.writeFileSync(PRODUCER_CAMPAIGNS_FILE, JSON.stringify(serverProducerCampaignsStore, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('Error writing producer campaigns to disk:', err);
+    }
+  };
+
+  // API: Get Active Rate Chart
+  app.get('/api/rate-chart', (_req, res) => {
+    res.json({
+      success: true,
+      rateChart: serverActiveRateChart,
+    });
+  });
+
+  // API: Save Rate Chart (with new version and history entry)
+  app.post('/api/rate-chart', (req, res) => {
+    try {
+      const { rateChart, historyEntry } = req.body;
+      if (!rateChart) {
+        return res.status(400).json({ error: 'rateChart is required' });
+      }
+
+      serverActiveRateChart = rateChart;
+      if (historyEntry) {
+        serverRateChartHistory = [historyEntry, ...serverRateChartHistory.filter(h => h.id !== historyEntry.id)];
+        if (serverRateChartHistory.length > 100) serverRateChartHistory.pop();
+      }
+
+      saveRateChartToDisk();
+
+      res.json({
+        success: true,
+        version: rateChart.version,
+        versionTag: rateChart.versionTag,
+        rateChart: serverActiveRateChart,
+      });
+    } catch (err: any) {
+      console.error('Error saving rate chart:', err);
+      res.status(500).json({ error: err.message || 'Failed to save rate chart' });
+    }
+  });
+
+  // API: Get Rate Chart History
+  app.get('/api/rate-chart/history', (_req, res) => {
+    res.json({
+      success: true,
+      history: serverRateChartHistory,
+    });
+  });
+
+  // API: Restore Rate Chart Version (Admin Rollback)
+  app.post('/api/rate-chart/restore', (req, res) => {
+    try {
+      const { rateChart, historyEntry, restoredFromVersion } = req.body;
+      if (!rateChart) {
+        return res.status(400).json({ error: 'rateChart payload required' });
+      }
+
+      serverActiveRateChart = rateChart;
+      if (historyEntry) {
+        serverRateChartHistory = [historyEntry, ...serverRateChartHistory.filter(h => h.id !== historyEntry.id)];
+      }
+
+      saveRateChartToDisk();
+
+      res.json({
+        success: true,
+        restoredFromVersion,
+        newVersion: rateChart.version,
+        rateChart: serverActiveRateChart,
+      });
+    } catch (err: any) {
+      console.error('Error restoring rate chart:', err);
+      res.status(500).json({ error: err.message || 'Failed to restore rate chart' });
+    }
+  });
+
+  // API: Activity Tracking Logger
+  app.post('/api/activities/log', (req, res) => {
+    try {
+      const activity = req.body;
+      if (!activity.id) {
+        activity.id = `ACT-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      }
+      activity.ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+      activity.serverTimestamp = new Date().toISOString();
+
+      serverActivitiesStore.unshift(activity);
+      if (serverActivitiesStore.length > 5000) serverActivitiesStore.pop();
+
+      res.json({ success: true, activity });
+    } catch (err: any) {
+      console.error('Error logging activity on server:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Get Activities with filtering
+  app.get('/api/activities', (req, res) => {
+    const { userId, type, date, limit = '200' } = req.query;
+    let list = [...serverActivitiesStore];
+
+    if (userId) {
+      list = list.filter(a => a.userId === userId);
+    }
+    if (type) {
+      list = list.filter(a => a.activityType === type);
+    }
+    if (date) {
+      list = list.filter(a => a.date === date);
+    }
+
+    res.json({
+      success: true,
+      total: list.length,
+      activities: list.slice(0, parseInt(limit as string, 10)),
+    });
+  });
+
+  // API: Call History Tracking
+  app.post('/api/calls/track', (req, res) => {
+    try {
+      const call = req.body;
+      if (!call.id) {
+        call.id = `CH-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
+      }
+      call.serverTimestamp = new Date().toISOString();
+
+      const idx = serverCallHistoryStore.findIndex(c => c.id === call.id);
+      if (idx >= 0) {
+        serverCallHistoryStore[idx] = { ...serverCallHistoryStore[idx], ...call };
+      } else {
+        serverCallHistoryStore.unshift(call);
+      }
+      if (serverCallHistoryStore.length > 2000) serverCallHistoryStore.pop();
+
+      res.json({ success: true, call });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/calls/history', (req, res) => {
+    const { officerId, date } = req.query;
+    let list = [...serverCallHistoryStore];
+    if (officerId) list = list.filter(c => c.officerId === officerId);
+    if (date) list = list.filter(c => c.date === date);
+    res.json({ success: true, calls: list });
+  });
+
+  // API: Daily Work Reports
+  app.post('/api/reports/daily/save', (req, res) => {
+    try {
+      const report = req.body;
+      if (!report.id) {
+        report.id = `DWR-${Date.now()}`;
+      }
+      const idx = serverDailyReportsStore.findIndex(r => r.id === report.id);
+      if (idx >= 0) {
+        serverDailyReportsStore[idx] = report;
+      } else {
+        serverDailyReportsStore.unshift(report);
+      }
+      res.json({ success: true, report });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/reports/daily', (req, res) => {
+    const { userId, date } = req.query;
+    let list = [...serverDailyReportsStore];
+    if (userId) list = list.filter(r => r.userId === userId);
+    if (date) list = list.filter(r => r.date === date);
+    res.json({ success: true, reports: list });
+  });
+
+  // API: Cloud Backup & Snapshot Manager
+  app.post('/api/backup/save', (req, res) => {
+    try {
+      const snapshot = req.body;
+      if (!snapshot.id) {
+        snapshot.id = `BK-${Date.now()}`;
+      }
+      snapshot.serverSavedAt = new Date().toISOString();
+      serverBackupSnapshots.unshift(snapshot);
+      if (serverBackupSnapshots.length > 50) serverBackupSnapshots.pop();
+
+      res.json({ success: true, snapshotId: snapshot.id, timestamp: snapshot.serverSavedAt });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/backup/latest', (_req, res) => {
+    const latest = serverBackupSnapshots[0] || null;
+    res.json({ success: true, snapshot: latest });
+  });
+
+  app.get('/api/backup/list', (_req, res) => {
+    const list = serverBackupSnapshots.map(s => ({
+      id: s.id,
+      timestamp: s.timestamp,
+      date: s.date,
+      time: s.time,
+      version: s.version,
+      userName: s.userName,
+      deviceName: s.deviceName,
+      itemCounts: s.itemCounts,
+      sizeBytes: s.sizeBytes,
+      backupType: s.backupType,
+    }));
+    res.json({ success: true, backups: list });
+  });
+
+  // API: Producer Communication & Call Tracking
+  app.get('/api/producer-communication/calls', (req, res) => {
+    try {
+      const { date, subject, route, producerCode, status, campaignId } = req.query;
+      let list = [...serverProducerCallsStore];
+
+      if (date) list = list.filter(c => c.callDate === date);
+      if (subject) list = list.filter(c => c.subject === subject);
+      if (route && route !== 'all') list = list.filter(c => c.route === route);
+      if (producerCode) list = list.filter(c => c.producerCode === producerCode);
+      if (status && status !== 'all') list = list.filter(c => c.status === status);
+      if (campaignId) list = list.filter(c => c.campaignId === campaignId);
+
+      res.json({ success: true, count: list.length, calls: list });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/producer-communication/calls', (req, res) => {
+    try {
+      const call = req.body;
+      if (!call.id) {
+        call.id = `PCC-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      }
+      call.serverSavedAt = new Date().toISOString();
+
+      const idx = serverProducerCallsStore.findIndex(c => c.id === call.id);
+      if (idx >= 0) {
+        serverProducerCallsStore[idx] = { ...serverProducerCallsStore[idx], ...call, updatedAt: new Date().toISOString() };
+      } else {
+        serverProducerCallsStore.unshift(call);
+      }
+      saveProducerCallsToDisk();
+
+      res.json({ success: true, call });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/producer-communication/calls/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      serverProducerCallsStore = serverProducerCallsStore.filter(c => c.id !== id);
+      saveProducerCallsToDisk();
+      res.json({ success: true, message: 'Call deleted successfully' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/producer-communication/history/:producerCode', (req, res) => {
+    try {
+      const { producerCode } = req.params;
+      const history = serverProducerCallsStore.filter(c => c.producerCode === producerCode);
+      res.json({ success: true, history });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/producer-communication/campaigns', (_req, res) => {
+    try {
+      res.json({ success: true, campaigns: serverProducerCampaignsStore });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/producer-communication/campaigns', (req, res) => {
+    try {
+      const campaign = req.body;
+      if (!campaign.id) {
+        campaign.id = `CMP-${Date.now()}`;
+      }
+      campaign.serverSavedAt = new Date().toISOString();
+
+      const idx = serverProducerCampaignsStore.findIndex(c => c.id === campaign.id);
+      if (idx >= 0) {
+        serverProducerCampaignsStore[idx] = { ...serverProducerCampaignsStore[idx], ...campaign, updatedAt: new Date().toISOString() };
+      } else {
+        serverProducerCampaignsStore.unshift(campaign);
+      }
+      saveProducerCampaignsToDisk();
+
+      res.json({ success: true, campaign });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // API: Universal Full Cloud Sync across devices
+  app.post('/api/sync/full', (req, res) => {
+    try {
+      const payload = req.body; // contains farmers, calls, tasks, routes, etc.
+      if (payload.userId) {
+        serverSyncStore[payload.userId] = {
+          ...serverSyncStore[payload.userId],
+          ...payload,
+          lastSyncTime: new Date().toISOString(),
+        };
+      }
+      res.json({ success: true, lastSyncTime: new Date().toISOString() });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/sync/full', (req, res) => {
+    const { userId } = req.query;
+    const data = (userId && serverSyncStore[userId as string]) || {};
+    res.json({ success: true, data });
+  });
 
   // API: Get All Tasks
   app.get('/api/tasks', (_req, res) => {

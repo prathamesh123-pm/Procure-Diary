@@ -788,7 +788,23 @@ export const StorageService = {
   },
 
   // Farmers
-  getFarmers: (): Farmer[] => loadFromStorage<Farmer[]>(KEYS.FARMERS, INITIAL_FARMERS),
+  getFarmers: (): Farmer[] => {
+    const list = loadFromStorage<Farmer[]>(KEYS.FARMERS, INITIAL_FARMERS);
+    return list.map(f => {
+      if (f.linkCenter) return f;
+      const computedLink =
+        f.route === 'RT-101'
+          ? 'Sangli Main Link Center'
+          : f.route === 'RT-102'
+          ? 'Islampur Chilling Link'
+          : f.route === 'RT-103'
+          ? 'Shirala BMC Link'
+          : f.route === 'RT-104'
+          ? 'Miraj Bulk Cooler Link'
+          : 'Tasgaon Central Link';
+      return { ...f, linkCenter: computedLink };
+    });
+  },
   saveFarmer: (farmer: Farmer): void => {
     const farmers = StorageService.getFarmers();
     const index = farmers.findIndex(f => f.id === farmer.id || f.farmerCode === farmer.farmerCode);
@@ -1137,6 +1153,14 @@ export const StorageService = {
       console.error('Failed to restore backup:', e);
       return false;
     }
+  },
+
+  // Daily Plans
+  getDailyPlans: (): any[] => {
+    return loadFromStorage<any[]>('dairy_daily_plans', []);
+  },
+  saveDailyPlans: (plans: any[]): void => {
+    saveToStorage('dairy_daily_plans', plans);
   },
 
   getLastSync: (): string => {

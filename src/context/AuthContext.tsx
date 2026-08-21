@@ -9,14 +9,17 @@ interface AuthContextType {
   error: string | null;
   login: (identifier: string, pass?: string, role?: UserRole) => Promise<{ success: boolean; error?: string }>;
   loginWithOtp: (mobile: string, otp: string) => Promise<{ success: boolean; error?: string }>;
-  demoLogin: (role?: UserRole | 'admin' | 'supervisor' | 'officer') => Promise<{ success: boolean; error?: string }>;
+  demoLogin: (role?: UserRole | 'admin' | 'supervisor' | 'officer' | 'manager' | 'viewer') => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   switchUser: (userId: string) => void;
   updateProfile: (updated: Partial<User>) => void;
   clearError: () => void;
   isAdmin: boolean;
+  isManager: boolean;
   isSupervisor: boolean;
   isOfficer: boolean;
+  isMPO: boolean;
+  isViewer: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -32,8 +35,11 @@ const AuthContext = createContext<AuthContextType>({
   updateProfile: () => {},
   clearError: () => {},
   isAdmin: false,
+  isManager: false,
   isSupervisor: false,
   isOfficer: false,
+  isMPO: false,
+  isViewer: false,
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -277,8 +283,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const isAdmin = currentUser?.role === 'admin';
-  const isSupervisor = currentUser?.role === 'supervisor' || isAdmin;
+  const isManager = currentUser?.role === 'manager' || isAdmin;
+  const isSupervisor = currentUser?.role === 'supervisor' || isManager || isAdmin;
   const isOfficer = currentUser?.role === 'officer';
+  const isMPO = currentUser?.role === 'officer' || currentUser?.role === 'supervisor';
+  const isViewer = currentUser?.role === 'viewer';
 
   return (
     <AuthContext.Provider
@@ -295,8 +304,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateProfile,
         clearError,
         isAdmin,
+        isManager,
         isSupervisor,
         isOfficer,
+        isMPO,
+        isViewer,
       }}
     >
       {children}

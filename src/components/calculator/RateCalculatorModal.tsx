@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Calculator,
   X,
@@ -25,6 +25,8 @@ import {
   Layers,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { RateChartService } from '../../services/rateChartService';
+import { RateChartRule } from '../../types/rateChart';
 
 interface RateCalculatorModalProps {
   isOpen: boolean;
@@ -35,31 +37,31 @@ export const RateCalculatorModal: React.FC<RateCalculatorModalProps> = ({ isOpen
   const { language } = useLanguage();
   const isMr = language === 'mr';
 
+  const [activeMasterChart, setActiveMasterChart] = useState<RateChartRule>(() => RateChartService.getActiveRateChart());
+
   // State: Milk Category
   const [milkType, setMilkType] = useState<'Cow' | 'Buffalo'>('Cow');
 
   // State: Core Quality Parameters
-  const [fat, setFat] = useState<number>(3.5);
-  const [snf, setSnf] = useState<number>(8.5);
+  const [fat, setFat] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.baseFat);
+  const [snf, setSnf] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.baseSnf);
   const [dailyLitres, setDailyLitres] = useState<number>(100);
 
   // State: Rate Structure & Incentives
-  const [baseRate, setBaseRate] = useState<number>(38.0);
-  const [incentivePerLitre, setIncentivePerLitre] = useState<number>(1.5);
-  const [baseFat, setBaseFat] = useState<number>(3.5);
-  const [baseSnf, setBaseSnf] = useState<number>(8.5);
+  const [baseRate, setBaseRate] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.baseRate);
+  const [incentivePerLitre, setIncentivePerLitre] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.incentivePerLitre);
+  const [baseFat, setBaseFat] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.baseFat);
+  const [baseSnf, setBaseSnf] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.baseSnf);
 
   // State: Point Step Increments & Reverse Deductions (per 0.1% change)
-  // Fat point step & reverse cut (₹ per 0.1% Fat)
-  const [fatIncrPoint, setFatIncrPoint] = useState<number>(0.30);
-  const [fatDecrPoint, setFatDecrPoint] = useState<number>(0.35);
-
-  // SNF point step & reverse cut (₹ per 0.1% SNF)
-  const [snfIncrPoint, setSnfIncrPoint] = useState<number>(0.25);
-  const [snfDecrPoint, setSnfDecrPoint] = useState<number>(0.30);
+  const [fatIncrPoint, setFatIncrPoint] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.fatIncrStep);
+  const [fatDecrPoint, setFatDecrPoint] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.fatDecrStep);
+  const [snfIncrPoint, setSnfIncrPoint] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.snfIncrStep);
+  const [snfDecrPoint, setSnfDecrPoint] = useState<number>(() => RateChartService.getActiveRateChart().cowRateConfig.snfDecrStep);
 
   // Toggle for Advanced Point Rule Settings
   const [showAdvancedRules, setShowAdvancedRules] = useState<boolean>(true);
+  const [showSensitivityMatrix, setShowSensitivityMatrix] = useState<boolean>(false);
 
   // State: Competitor Comparison
   const [showCompetitorCompare, setShowCompetitorCompare] = useState<boolean>(false);
@@ -67,10 +69,10 @@ export const RateCalculatorModal: React.FC<RateCalculatorModalProps> = ({ isOpen
   const [competitorFlatRate, setCompetitorFlatRate] = useState<number>(37.5);
 
   // Competitor Formula Parameters
-  const [compBaseRate, setCompBaseRate] = useState<number>(37.0);
-  const [compIncentive, setCompIncentive] = useState<number>(0.5);
-  const [compBaseFat, setCompBaseFat] = useState<number>(3.5);
-  const [compBaseSnf, setCompBaseSnf] = useState<number>(8.5);
+  const [compBaseRate, setCompBaseRate] = useState<number>(() => RateChartService.getActiveRateChart().competitorConfig?.cowBaseRate || 37.0);
+  const [compIncentive, setCompIncentive] = useState<number>(() => RateChartService.getActiveRateChart().competitorConfig?.cowIncentive || 0.5);
+  const [compBaseFat, setCompBaseFat] = useState<number>(() => RateChartService.getActiveRateChart().competitorConfig?.cowBaseFat || 3.5);
+  const [compBaseSnf, setCompBaseSnf] = useState<number>(() => RateChartService.getActiveRateChart().competitorConfig?.cowBaseSnf || 8.5);
   const [compFatIncrPoint, setCompFatIncrPoint] = useState<number>(0.25);
   const [compFatDecrPoint, setCompFatDecrPoint] = useState<number>(0.40);
   const [compSnfIncrPoint, setCompSnfIncrPoint] = useState<number>(0.20);
@@ -79,56 +81,65 @@ export const RateCalculatorModal: React.FC<RateCalculatorModalProps> = ({ isOpen
   // Copy Status
   const [copiedQuote, setCopiedQuote] = useState<boolean>(false);
 
-  if (!isOpen) return null;
+  // Sync with Master Rate Chart on open and whenever rate chart updates
+  useEffect(() => {
+    const handleUpdate = (e: any) => {
+      if (e.detail) {
+        setActiveMasterChart(e.detail);
+        applyChartToState(e.detail, milkType);
+      }
+    };
 
-  // Handle Milk Type Switch with Standard Defaults
-  const handleTypeSwitch = (type: 'Cow' | 'Buffalo') => {
-    setMilkType(type);
+    if (isOpen) {
+      const current = RateChartService.getActiveRateChart();
+      setActiveMasterChart(current);
+      applyChartToState(current, milkType);
+    }
+
+    window.addEventListener('dairy_rate_chart_updated', handleUpdate);
+    return () => window.removeEventListener('dairy_rate_chart_updated', handleUpdate);
+  }, [isOpen, milkType]);
+
+  const applyChartToState = (chart: RateChartRule, type: 'Cow' | 'Buffalo') => {
+    const cfg = type === 'Cow' ? chart.cowRateConfig : chart.buffaloRateConfig;
+    setBaseFat(cfg.baseFat);
+    setBaseSnf(cfg.baseSnf);
+    setBaseRate(cfg.baseRate);
+    setIncentivePerLitre(cfg.incentivePerLitre);
+    setFatIncrPoint(cfg.fatIncrStep);
+    setFatDecrPoint(cfg.fatDecrStep);
+    setSnfIncrPoint(cfg.snfIncrStep);
+    setSnfDecrPoint(cfg.snfDecrStep);
+    setFat(cfg.baseFat);
+    setSnf(cfg.baseSnf);
+
     if (type === 'Cow') {
-      setFat(3.5);
-      setSnf(8.5);
-      setBaseFat(3.5);
-      setBaseSnf(8.5);
-      setBaseRate(38.0);
-      setIncentivePerLitre(1.50);
-      setFatIncrPoint(0.30);
-      setFatDecrPoint(0.35);
-      setSnfIncrPoint(0.25);
-      setSnfDecrPoint(0.30);
-
-      // Competitor cow defaults
-      setCompetitorFlatRate(37.5);
-      setCompBaseRate(37.0);
-      setCompIncentive(0.5);
-      setCompBaseFat(3.5);
-      setCompBaseSnf(8.5);
+      setCompetitorFlatRate(chart.competitorConfig?.cowBaseRate || 37.5);
+      setCompBaseRate(chart.competitorConfig?.cowBaseRate || 37.0);
+      setCompIncentive(chart.competitorConfig?.cowIncentive || 0.5);
+      setCompBaseFat(chart.competitorConfig?.cowBaseFat || 3.5);
+      setCompBaseSnf(chart.competitorConfig?.cowBaseSnf || 8.5);
       setCompFatIncrPoint(0.25);
       setCompFatDecrPoint(0.40);
       setCompSnfIncrPoint(0.20);
       setCompSnfDecrPoint(0.35);
     } else {
-      setFat(6.5);
-      setSnf(9.0);
-      setBaseFat(6.0);
-      setBaseSnf(9.0);
-      setBaseRate(68.0);
-      setIncentivePerLitre(2.00);
-      setFatIncrPoint(0.50);
-      setFatDecrPoint(0.60);
-      setSnfIncrPoint(0.35);
-      setSnfDecrPoint(0.40);
-
-      // Competitor buffalo defaults
-      setCompetitorFlatRate(66.0);
-      setCompBaseRate(66.0);
-      setCompIncentive(1.0);
-      setCompBaseFat(6.0);
-      setCompBaseSnf(9.0);
+      setCompetitorFlatRate(chart.competitorConfig?.buffaloBaseRate || 66.0);
+      setCompBaseRate(chart.competitorConfig?.buffaloBaseRate || 66.0);
+      setCompIncentive(chart.competitorConfig?.buffaloIncentive || 1.0);
+      setCompBaseFat(chart.competitorConfig?.buffaloBaseFat || 6.0);
+      setCompBaseSnf(chart.competitorConfig?.buffaloBaseSnf || 9.0);
       setCompFatIncrPoint(0.45);
       setCompFatDecrPoint(0.65);
       setCompSnfIncrPoint(0.30);
       setCompSnfDecrPoint(0.45);
     }
+  };
+
+  // Handle Milk Type Switch with Standard Defaults
+  const handleTypeSwitch = (type: 'Cow' | 'Buffalo') => {
+    setMilkType(type);
+    applyChartToState(activeMasterChart, type);
   };
 
   // Reset to Default Preset
@@ -199,6 +210,28 @@ export const RateCalculatorModal: React.FC<RateCalculatorModalProps> = ({ isOpen
     setSnf(prev => Number(Math.min(maxLimit, Math.max(minLimit, prev + delta)).toFixed(1)));
   };
 
+  // Direct Point Variation Handlers
+  const handleFatPointsChange = (points: number) => {
+    const targetFat = Number((baseFat + points / 10).toFixed(1));
+    const minLimit = milkType === 'Cow' ? 2.0 : 4.5;
+    const maxLimit = milkType === 'Cow' ? 6.5 : 11.0;
+    setFat(Number(Math.min(maxLimit, Math.max(minLimit, targetFat)).toFixed(1)));
+  };
+
+  const handleSnfPointsChange = (points: number) => {
+    const targetSnf = Number((baseSnf + points / 10).toFixed(1));
+    const minLimit = milkType === 'Cow' ? 7.0 : 7.5;
+    const maxLimit = milkType === 'Cow' ? 10.5 : 11.5;
+    setSnf(Number(Math.min(maxLimit, Math.max(minLimit, targetSnf)).toFixed(1)));
+  };
+
+  // Base Quality Payout (at 0 point variations)
+  const baseOnlyRate = Number((baseRate + incentivePerLitre).toFixed(2));
+  const baseDailyPayout = Number((baseOnlyRate * dailyLitres).toFixed(2));
+  const baseTenDayPayout = Number((baseDailyPayout * 10).toFixed(2));
+  const netQualityPriceDelta = Number((fatAdjustment + snfAdjustment).toFixed(2));
+  const netQualityTenDayImpact = Number(((dailyPayout - baseDailyPayout) * 10).toFixed(2));
+
   // WhatsApp Quotation Generator
   const getWhatsAppQuotation = () => {
     const text = isMr
@@ -265,9 +298,29 @@ Guaranteed 10-day payment cycle & on-farm field support.
     setTimeout(() => setCopiedQuote(false), 2500);
   };
 
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Guard: Do not render anything when modal is closed
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto max-h-[95vh] flex flex-col transition-all">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto max-h-[95vh] flex flex-col transition-all"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Modal Header */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white flex items-center justify-between shrink-0 shadow-sm">
           <div className="flex items-center gap-3">
@@ -371,21 +424,29 @@ Guaranteed 10-day payment cycle & on-farm field support.
             </div>
           </div>
 
-          {/* Section 1: Quality Parameters (Fat & SNF Interactive Cards) */}
+          {/* Section 1: Quality Parameters (Fat & SNF Interactive Cards with Point Variation Inputs) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* FAT CARD */}
-            <div className="p-3.5 rounded-2xl bg-emerald-50/60 dark:bg-slate-800/80 border border-emerald-200 dark:border-slate-700/80 space-y-2.5 shadow-xs">
+            <div className={`p-3.5 rounded-2xl border space-y-3 shadow-xs transition-all ${
+              fatDiffPoints < 0 
+                ? 'bg-rose-50/50 dark:bg-slate-800/90 border-rose-200 dark:border-rose-900/60'
+                : fatDiffPoints > 0
+                ? 'bg-emerald-50/60 dark:bg-slate-800/90 border-emerald-200 dark:border-emerald-900/60'
+                : 'bg-slate-50/70 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80'
+            }`}>
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
                   <Percent className="w-4 h-4 text-emerald-600" />
                   <span>{isMr ? 'फॅट प्रमाण (Fat %)' : 'Fat Percentage'}</span>
                 </span>
                 
+                {/* Fat % Value and Steppers */}
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => stepFat(-0.1)}
                     className="w-6 h-6 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-black flex items-center justify-center hover:bg-slate-200 cursor-pointer shadow-2xs"
+                    title="-0.1% Fat"
                   >
                     <Minus className="w-3 h-3" />
                   </button>
@@ -396,9 +457,63 @@ Guaranteed 10-day payment cycle & on-farm field support.
                     type="button"
                     onClick={() => stepFat(0.1)}
                     className="w-6 h-6 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-black flex items-center justify-center hover:bg-slate-200 cursor-pointer shadow-2xs"
+                    title="+0.1% Fat"
                   >
                     <Plus className="w-3 h-3" />
                   </button>
+                </div>
+              </div>
+
+              {/* Direct Point Variation Input & Quick Points Control */}
+              <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                  <Sliders className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{isMr ? 'फॅट पॉईंट फरक:' : 'Fat Point Variation:'}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="1"
+                    min="-30"
+                    max="30"
+                    value={fatDiffPoints}
+                    onChange={e => handleFatPointsChange(parseInt(e.target.value) || 0)}
+                    className={`w-16 px-1.5 py-0.5 text-center font-black rounded-lg border text-xs ${
+                      fatDiffPoints < 0 
+                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                        : fatDiffPoints > 0
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                    }`}
+                  />
+                  <span className="text-[10px] font-bold text-slate-500">{isMr ? 'पॉईंट' : 'pts'}</span>
+                </div>
+              </div>
+
+              {/* Quick Point Variation Presets */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-semibold text-slate-500 block">
+                  {isMr ? 'त्वरित पॉईंट फरक निवडा:' : 'Quick Point Variations:'}
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {[-5, -3, -2, -1, 0, 1, 2, 3, 5].map(pt => (
+                    <button
+                      key={pt}
+                      type="button"
+                      onClick={() => handleFatPointsChange(pt)}
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                        fatDiffPoints === pt
+                          ? pt < 0 
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : pt > 0
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-xs'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      {pt === 0 ? (isMr ? 'बेस' : 'Base') : pt > 0 ? `+${pt}` : `${pt}`}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -421,8 +536,8 @@ Guaranteed 10-day payment cycle & on-farm field support.
                 <span>{isMr ? 'कमाल' : 'Max'}: {milkType === 'Cow' ? '5.5%' : '10.0%'}</span>
               </div>
 
-              {/* Point Indicator Pill */}
-              <div className={`p-2 rounded-xl text-[11px] font-semibold flex items-center justify-between ${
+              {/* Point Indicator Pill with Calculated Price Difference */}
+              <div className={`p-2.5 rounded-xl text-[11px] font-semibold flex items-center justify-between ${
                 fatDiffPoints >= 0
                   ? 'bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800'
                   : 'bg-rose-100/70 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-300/60 dark:border-rose-800'
@@ -433,33 +548,53 @@ Guaranteed 10-day payment cycle & on-farm field support.
                   ) : (
                     <ArrowDownRight className="w-4 h-4 text-rose-600 shrink-0" />
                   )}
-                  <span>
-                    {fatDiffPoints === 0
-                      ? (isMr ? 'बेस फॅटवर बरोबर (० पॉईंट)' : 'Exact Base Fat (0 pts)')
-                      : fatDiffPoints > 0
-                      ? `${isMr ? '+' : '+'}${fatDiffPoints} ${isMr ? 'पॉईंट फॅट वाढ' : 'pts Fat Bonus'} (${fatDiffPoints} × ₹${fatIncrPoint})`
-                      : `${fatDiffPoints} ${isMr ? 'पॉईंट फॅट रिव्हर्स कट' : 'pts Reverse Cut'} (${Math.abs(fatDiffPoints)} × ₹${fatDecrPoint})`}
+                  <div>
+                    <span className="block font-bold">
+                      {fatDiffPoints === 0
+                        ? (isMr ? 'बेस फॅटवर बरोबर (० पॉईंट फरक)' : 'Exact Base Fat (0 pts)')
+                        : fatDiffPoints > 0
+                        ? `+${fatDiffPoints} ${isMr ? 'पॉईंट फॅट वाढ (+ बोनस)' : 'pts Fat Bonus'} (+${(fat - baseFat).toFixed(1)}%)`
+                        : `${fatDiffPoints} ${isMr ? 'पॉईंट फॅट रिव्हर्स कट (- दंड)' : 'pts Reverse Cut'} (${(fat - baseFat).toFixed(1)}%)`}
+                    </span>
+                    <span className="text-[10px] opacity-80 block">
+                      {fatDiffPoints >= 0 
+                        ? `${fatDiffPoints} pts × ₹${fatIncrPoint.toFixed(2)}/pt`
+                        : `${Math.abs(fatDiffPoints)} pts reverse × ₹${fatDecrPoint.toFixed(2)}/pt`}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-black block">
+                    {fatAdjustment >= 0 ? `+₹${fatAdjustment.toFixed(2)}` : `-₹${Math.abs(fatAdjustment).toFixed(2)}`} /L
+                  </span>
+                  <span className="text-[9px] opacity-80 block">
+                    {fatAdjustment >= 0 ? (isMr ? 'दर वाढ' : 'Price Add') : (isMr ? 'रिव्हर्स वजा' : 'Reverse Cut')}
                   </span>
                 </div>
-                <span className="font-black">
-                  {fatAdjustment >= 0 ? `+₹${fatAdjustment.toFixed(2)}` : `-₹${Math.abs(fatAdjustment).toFixed(2)}`}
-                </span>
               </div>
             </div>
 
             {/* SNF CARD */}
-            <div className="p-3.5 rounded-2xl bg-blue-50/60 dark:bg-slate-800/80 border border-blue-200 dark:border-slate-700/80 space-y-2.5 shadow-xs">
+            <div className={`p-3.5 rounded-2xl border space-y-3 shadow-xs transition-all ${
+              snfDiffPoints < 0 
+                ? 'bg-rose-50/50 dark:bg-slate-800/90 border-rose-200 dark:border-rose-900/60'
+                : snfDiffPoints > 0
+                ? 'bg-blue-50/60 dark:bg-slate-800/90 border-blue-200 dark:border-blue-900/60'
+                : 'bg-slate-50/70 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80'
+            }`}>
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
                   <Scale className="w-4 h-4 text-blue-600" />
                   <span>{isMr ? 'एस.एन.एफ. प्रमाण (SNF %)' : 'SNF Percentage'}</span>
                 </span>
                 
+                {/* SNF % Value and Steppers */}
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => stepSnf(-0.1)}
                     className="w-6 h-6 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-black flex items-center justify-center hover:bg-slate-200 cursor-pointer shadow-2xs"
+                    title="-0.1% SNF"
                   >
                     <Minus className="w-3 h-3" />
                   </button>
@@ -470,9 +605,63 @@ Guaranteed 10-day payment cycle & on-farm field support.
                     type="button"
                     onClick={() => stepSnf(0.1)}
                     className="w-6 h-6 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-black flex items-center justify-center hover:bg-slate-200 cursor-pointer shadow-2xs"
+                    title="+0.1% SNF"
                   >
                     <Plus className="w-3 h-3" />
                   </button>
+                </div>
+              </div>
+
+              {/* Direct Point Variation Input & Quick Points Control */}
+              <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                  <Sliders className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>{isMr ? 'SNF पॉईंट फरक:' : 'SNF Point Variation:'}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="1"
+                    min="-30"
+                    max="30"
+                    value={snfDiffPoints}
+                    onChange={e => handleSnfPointsChange(parseInt(e.target.value) || 0)}
+                    className={`w-16 px-1.5 py-0.5 text-center font-black rounded-lg border text-xs ${
+                      snfDiffPoints < 0 
+                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                        : snfDiffPoints > 0
+                        ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                    }`}
+                  />
+                  <span className="text-[10px] font-bold text-slate-500">{isMr ? 'पॉईंट' : 'pts'}</span>
+                </div>
+              </div>
+
+              {/* Quick Point Variation Presets */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-semibold text-slate-500 block">
+                  {isMr ? 'त्वरित पॉईंट फरक निवडा:' : 'Quick Point Variations:'}
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {[-5, -3, -2, -1, 0, 1, 2, 3, 5].map(pt => (
+                    <button
+                      key={pt}
+                      type="button"
+                      onClick={() => handleSnfPointsChange(pt)}
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                        snfDiffPoints === pt
+                          ? pt < 0 
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : pt > 0
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-xs'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-200 border border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      {pt === 0 ? (isMr ? 'बेस' : 'Base') : pt > 0 ? `+${pt}` : `${pt}`}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -495,8 +684,8 @@ Guaranteed 10-day payment cycle & on-farm field support.
                 <span>{isMr ? 'कमाल' : 'Max'}: {milkType === 'Cow' ? '9.5%' : '10.5%'}</span>
               </div>
 
-              {/* SNF Point Indicator Pill */}
-              <div className={`p-2 rounded-xl text-[11px] font-semibold flex items-center justify-between ${
+              {/* SNF Point Indicator Pill with Calculated Price Difference */}
+              <div className={`p-2.5 rounded-xl text-[11px] font-semibold flex items-center justify-between ${
                 snfDiffPoints >= 0
                   ? 'bg-blue-100/70 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-300/60 dark:border-blue-800'
                   : 'bg-rose-100/70 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-300/60 dark:border-rose-800'
@@ -507,17 +696,29 @@ Guaranteed 10-day payment cycle & on-farm field support.
                   ) : (
                     <ArrowDownRight className="w-4 h-4 text-rose-600 shrink-0" />
                   )}
-                  <span>
-                    {snfDiffPoints === 0
-                      ? (isMr ? 'बेस SNF वर बरोबर (० पॉईंट)' : 'Exact Base SNF (0 pts)')
-                      : snfDiffPoints > 0
-                      ? `${isMr ? '+' : '+'}${snfDiffPoints} ${isMr ? 'पॉईंट SNF वाढ' : 'pts SNF Bonus'} (${snfDiffPoints} × ₹${snfIncrPoint})`
-                      : `${snfDiffPoints} ${isMr ? 'पॉईंट SNF रिव्हर्स कट' : 'pts Reverse Cut'} (${Math.abs(snfDiffPoints)} × ₹${snfDecrPoint})`}
+                  <div>
+                    <span className="block font-bold">
+                      {snfDiffPoints === 0
+                        ? (isMr ? 'बेस SNF वर बरोबर (० पॉईंट फरक)' : 'Exact Base SNF (0 pts)')
+                        : snfDiffPoints > 0
+                        ? `+${snfDiffPoints} ${isMr ? 'पॉईंट SNF वाढ (+ बोनस)' : 'pts SNF Bonus'} (+${(snf - baseSnf).toFixed(1)}%)`
+                        : `${snfDiffPoints} ${isMr ? 'पॉईंट SNF रिव्हर्स कट (- दंड)' : 'pts Reverse Cut'} (${(snf - baseSnf).toFixed(1)}%)`}
+                    </span>
+                    <span className="text-[10px] opacity-80 block">
+                      {snfDiffPoints >= 0 
+                        ? `${snfDiffPoints} pts × ₹${snfIncrPoint.toFixed(2)}/pt`
+                        : `${Math.abs(snfDiffPoints)} pts reverse × ₹${snfDecrPoint.toFixed(2)}/pt`}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-black block">
+                    {snfAdjustment >= 0 ? `+₹${snfAdjustment.toFixed(2)}` : `-₹${Math.abs(snfAdjustment).toFixed(2)}`} /L
+                  </span>
+                  <span className="text-[9px] opacity-80 block">
+                    {snfAdjustment >= 0 ? (isMr ? 'दर वाढ' : 'Price Add') : (isMr ? 'रिव्हर्स वजा' : 'Reverse Cut')}
                   </span>
                 </div>
-                <span className="font-black">
-                  {snfAdjustment >= 0 ? `+₹${snfAdjustment.toFixed(2)}` : `-₹${Math.abs(snfAdjustment).toFixed(2)}`}
-                </span>
               </div>
             </div>
           </div>
@@ -688,7 +889,242 @@ Guaranteed 10-day payment cycle & on-farm field support.
             )}
           </div>
 
-          {/* Section 3: Calculated Procurement Rate & Payout Highlight Card */}
+          {/* Section 3: Point Variation Price Difference & Payout Impact Breakdown */}
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                  {isMr ? 'पॉईंट फरक व निव्वळ दर/बिल परिणाम (Price Difference & Impact)' : 'Quality Price Difference & Payout Impact'}
+                </span>
+              </div>
+              <span className={`text-[11px] font-black px-2 py-0.5 rounded-lg ${
+                netQualityPriceDelta > 0
+                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                  : netQualityPriceDelta < 0
+                  ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+              }`}>
+                {netQualityPriceDelta > 0 
+                  ? `+₹${netQualityPriceDelta.toFixed(2)}/L ${isMr ? 'वाढीव बोनस' : 'Bonus'}`
+                  : netQualityPriceDelta < 0
+                  ? `-₹${Math.abs(netQualityPriceDelta).toFixed(2)}/L ${isMr ? 'रिव्हर्स कट' : 'Reverse Drop'}`
+                  : (isMr ? 'बेस दर सममूल्य' : 'Base Parity')}
+              </span>
+            </div>
+
+            {/* Quality Penalty / Bonus Banner */}
+            {(fatDiffPoints < 0 || snfDiffPoints < 0) && (
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-[11px] space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    {isMr ? '⚠️ रिव्हर्स कट नुकसान सूचना (Reverse Point Deduction Warning)' : '⚠️ Reverse Point Deduction Warning'}
+                  </span>
+                </div>
+                <p className="leading-relaxed">
+                  {isMr
+                    ? `दूध गुणवत्ता बेस प्रमाणापेक्षा कमी असल्याने प्रति लिटर ₹${Math.abs(netQualityPriceDelta).toFixed(2)} चा रिव्हर्स कट लागला आहे. यामुळे १० दिवसांच्या बिलात ₹${Math.abs(netQualityTenDayImpact).toLocaleString('en-IN')} चे थेट नुकसान होत आहे.`
+                    : `Milk quality is below base standard, resulting in a ₹${Math.abs(netQualityPriceDelta).toFixed(2)}/L reverse cut. This leads to a payout loss of ₹${Math.abs(netQualityTenDayImpact).toLocaleString('en-IN')} for the 10-day billing cycle.`}
+                </p>
+                <div className="pt-1 flex items-center justify-between text-[10px] text-amber-700 dark:text-amber-300 font-semibold border-t border-amber-200 dark:border-amber-800/40">
+                  <span>{isMr ? '💡 टीप: फक्त +२ पॉईंट वाढल्यास १० दिवसांत' : '💡 Tip: Recover +2 points to gain'}</span>
+                  <strong className="text-emerald-700 dark:text-emerald-400 font-black">
+                    +₹{Number(((fatIncrPoint * 2 * dailyLitres * 10)).toFixed(0)).toLocaleString('en-IN')} {isMr ? 'जादा नफा!' : 'Extra Payout!'}
+                  </strong>
+                </div>
+              </div>
+            )}
+
+            {fatDiffPoints >= 0 && snfDiffPoints >= 0 && (fatDiffPoints > 0 || snfDiffPoints > 0) && (
+              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200 text-[11px] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-bold">
+                    {isMr ? 'उत्कृष्ट गुणवत्ता बोनस लागू!' : 'Quality Bonus Reward Applied!'}
+                  </span>
+                </div>
+                <span className="font-black text-emerald-700 dark:text-emerald-300">
+                  +₹{netQualityTenDayImpact.toLocaleString('en-IN')} {isMr ? '१० दिवसांचा जादा नफा' : '10-Day Extra Gain'}
+                </span>
+              </div>
+            )}
+
+            {/* Price Difference Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[11px]">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-500 text-[10px]">
+                    <th className="pb-1.5 font-bold">{isMr ? 'घटक' : 'Parameter'}</th>
+                    <th className="pb-1.5 font-bold">{isMr ? 'सध्याचे प्रमाण' : 'Actual'}</th>
+                    <th className="pb-1.5 font-bold">{isMr ? 'पॉईंट फरक' : 'Point Diff.'}</th>
+                    <th className="pb-1.5 font-bold">{isMr ? 'लागू दर पायरी' : 'Applied Step'}</th>
+                    <th className="pb-1.5 font-bold text-right">{isMr ? 'दर फरक (₹/L)' : 'Price Diff.'}</th>
+                    <th className="pb-1.5 font-bold text-right">{isMr ? '१० दिवसांचे बिल फरक' : '10-Day Impact'}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200/60 dark:divide-slate-700/60">
+                  {/* Fat Row */}
+                  <tr>
+                    <td className="py-2 font-bold flex items-center gap-1">
+                      <Percent className="w-3 h-3 text-emerald-600" />
+                      <span>{isMr ? 'फॅट (Fat)' : 'Fat'}</span>
+                    </td>
+                    <td className="py-2 font-semibold">{fat.toFixed(1)}%</td>
+                    <td className="py-2">
+                      <span className={`font-bold ${fatDiffPoints >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {fatDiffPoints >= 0 ? `+${fatDiffPoints}` : `${fatDiffPoints}`} pts
+                      </span>
+                    </td>
+                    <td className="py-2 text-[10px] text-slate-500">
+                      {fatDiffPoints >= 0 ? `₹${fatIncrPoint.toFixed(2)} / pt bonus` : `₹${fatDecrPoint.toFixed(2)} / pt cut`}
+                    </td>
+                    <td className={`py-2 text-right font-black ${fatAdjustment >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {fatAdjustment >= 0 ? `+₹${fatAdjustment.toFixed(2)}` : `-₹${Math.abs(fatAdjustment).toFixed(2)}`}
+                    </td>
+                    <td className={`py-2 text-right font-bold ${fatAdjustment >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {fatAdjustment >= 0 
+                        ? `+₹${(fatAdjustment * dailyLitres * 10).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` 
+                        : `-₹${Math.abs(fatAdjustment * dailyLitres * 10).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
+                    </td>
+                  </tr>
+
+                  {/* SNF Row */}
+                  <tr>
+                    <td className="py-2 font-bold flex items-center gap-1">
+                      <Scale className="w-3 h-3 text-blue-600" />
+                      <span>{isMr ? 'एस.एन.एफ. (SNF)' : 'SNF'}</span>
+                    </td>
+                    <td className="py-2 font-semibold">{snf.toFixed(1)}%</td>
+                    <td className="py-2">
+                      <span className={`font-bold ${snfDiffPoints >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+                        {snfDiffPoints >= 0 ? `+${snfDiffPoints}` : `${snfDiffPoints}`} pts
+                      </span>
+                    </td>
+                    <td className="py-2 text-[10px] text-slate-500">
+                      {snfDiffPoints >= 0 ? `₹${snfIncrPoint.toFixed(2)} / pt bonus` : `₹${snfDecrPoint.toFixed(2)} / pt cut`}
+                    </td>
+                    <td className={`py-2 text-right font-black ${snfAdjustment >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+                      {snfAdjustment >= 0 ? `+₹${snfAdjustment.toFixed(2)}` : `-₹${Math.abs(snfAdjustment).toFixed(2)}`}
+                    </td>
+                    <td className={`py-2 text-right font-bold ${snfAdjustment >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+                      {snfAdjustment >= 0 
+                        ? `+₹${(snfAdjustment * dailyLitres * 10).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` 
+                        : `-₹${Math.abs(snfAdjustment * dailyLitres * 10).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
+                    </td>
+                  </tr>
+
+                  {/* Incentive Row */}
+                  <tr>
+                    <td className="py-2 font-bold flex items-center gap-1 text-amber-600">
+                      <Sparkles className="w-3 h-3" />
+                      <span>{isMr ? 'विशेष इन्सेंटिव्ह' : 'Incentive'}</span>
+                    </td>
+                    <td className="py-2 font-semibold">-</td>
+                    <td className="py-2 text-slate-400">-</td>
+                    <td className="py-2 text-[10px] text-slate-500">{isMr ? 'निश्चित प्रति लिटर' : 'Flat per litre'}</td>
+                    <td className="py-2 text-right font-black text-amber-600">+₹{incentivePerLitre.toFixed(2)}</td>
+                    <td className="py-2 text-right font-bold text-amber-600">
+                      +₹{(incentivePerLitre * dailyLitres * 10).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Point Sensitivity Matrix Toggle & Content */}
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setShowSensitivityMatrix(!showSensitivityMatrix)}
+                className="w-full py-1.5 px-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold flex items-center justify-between text-[11px] transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{isMr ? '📊 सर्व पॉईंट फरक (-५ ते +५ पॉईंट) दर व बिल सारणी पहा' : '📊 View Point Sensitivity Matrix (-5 to +5 pts)'}</span>
+                </div>
+                {showSensitivityMatrix ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+
+              {showSensitivityMatrix && (
+                <div className="mt-2.5 space-y-2">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                    <table className="w-full text-center text-[10px]">
+                      <thead className="bg-slate-100 dark:bg-slate-900/80 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <th className="p-1.5">{isMr ? 'पॉईंट फरक' : 'Point Shift'}</th>
+                          <th className="p-1.5">{isMr ? 'फॅट %' : 'Fat %'}</th>
+                          <th className="p-1.5">{isMr ? 'लागू दर' : 'Rate (₹/L)'}</th>
+                          <th className="p-1.5">{isMr ? 'दर फरक' : 'Rate Diff'}</th>
+                          <th className="p-1.5 font-black">{isMr ? '१० दिवसांचे बिल' : '10-Day Bill'}</th>
+                          <th className="p-1.5">{isMr ? 'निवड करा' : 'Apply'}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/50 dark:divide-slate-700/50 bg-white dark:bg-slate-900">
+                        {[-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5].map(pt => {
+                          const simFat = Number((baseFat + pt / 10).toFixed(1));
+                          const simFatAdj = pt >= 0 ? pt * fatIncrPoint : pt * fatDecrPoint;
+                          const simSnfAdj = snfAdjustment; // keeping current SNF for matrix
+                          const simRate = Number((baseRate + incentivePerLitre + simFatAdj + simSnfAdj).toFixed(2));
+                          const simTenDayBill = Number((simRate * dailyLitres * 10).toFixed(0));
+                          const simTenDayImpact = Number(((simRate - baseOnlyRate) * dailyLitres * 10).toFixed(0));
+                          const isCurrent = fatDiffPoints === pt;
+
+                          return (
+                            <tr
+                              key={pt}
+                              className={`transition-colors ${
+                                isCurrent
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/40 font-bold text-emerald-900 dark:text-emerald-200'
+                                  : pt < 0
+                                  ? 'hover:bg-rose-50/40 dark:hover:bg-rose-950/20 text-slate-700 dark:text-slate-300'
+                                  : pt === 0
+                                  ? 'bg-slate-50 dark:bg-slate-800/40 font-semibold'
+                                  : 'hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <td className="p-1.5 font-bold">
+                                {pt === 0 ? (isMr ? 'बेस (०)' : 'Base (0)') : pt > 0 ? `+${pt} pts` : `${pt} pts`}
+                              </td>
+                              <td className="p-1.5">{simFat.toFixed(1)}%</td>
+                              <td className="p-1.5 font-black">₹{simRate.toFixed(2)}</td>
+                              <td className={`p-1.5 font-bold ${pt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {pt >= 0 ? `+₹${simFatAdj.toFixed(2)}` : `-₹${Math.abs(simFatAdj).toFixed(2)}`}
+                              </td>
+                              <td className="p-1.5 font-black">
+                                ₹{simTenDayBill.toLocaleString('en-IN')}
+                                {simTenDayImpact !== 0 && (
+                                  <span className={`block text-[9px] font-normal ${simTenDayImpact > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    ({simTenDayImpact > 0 ? `+₹${simTenDayImpact}` : `-₹${Math.abs(simTenDayImpact)}`})
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleFatPointsChange(pt)}
+                                  disabled={isCurrent}
+                                  className={`px-2 py-0.5 rounded-md text-[9px] font-bold cursor-pointer transition-colors ${
+                                    isCurrent
+                                    ? 'bg-emerald-600 text-white cursor-default'
+                                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
+                                  }`}
+                                >
+                                  {isCurrent ? (isMr ? 'लागू आहे' : 'Active') : (isMr ? 'लागू करा' : 'Select')}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Section 4: Calculated Procurement Rate & Payout Highlight Card */}
           <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-tr from-emerald-700 via-emerald-800 to-teal-900 text-white shadow-xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-500/40 pb-3">
               <div>
@@ -735,14 +1171,14 @@ Guaranteed 10-day payment cycle & on-farm field support.
               </div>
             </div>
 
-            {/* Payout Forecast Grid: Daily, 10-Day, Monthly */}
+            {/* Payout Forecast Grid: Daily, 10-Day, Monthly with Base Comparison */}
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-xs">
                 <span className="text-[10px] text-emerald-200 block">
                   {isMr ? 'दैनिक रक्कम' : 'Daily Payout'}
                 </span>
                 <span className="text-sm sm:text-base font-black">₹{dailyPayout.toLocaleString('en-IN')}</span>
-                <span className="text-[9px] text-emerald-300 block">{dailyLitres} Ltr</span>
+                <span className="text-[9px] text-emerald-300 block">{dailyLitres} Ltr/day</span>
               </div>
 
               <div className="p-2.5 rounded-xl bg-amber-400/20 border border-amber-300/40 backdrop-blur-xs shadow-xs">
@@ -760,6 +1196,18 @@ Guaranteed 10-day payment cycle & on-farm field support.
                 <span className="text-sm sm:text-base font-black">₹{monthlyPayout.toLocaleString('en-IN')}</span>
                 <span className="text-[9px] text-emerald-300 block">{dailyLitres * 30} Ltr</span>
               </div>
+            </div>
+
+            {/* Payout Comparison against Standard Base Quality */}
+            <div className="p-2.5 rounded-xl bg-black/20 text-[11px] flex items-center justify-between">
+              <span className="text-emerald-100">
+                {isMr ? 'प्रमाणित बेस गुणवत्तेवर १० दिवसांचे बिल:' : 'Standard Base Quality 10-Day Bill:'} <strong>₹{baseTenDayPayout.toLocaleString('en-IN')}</strong>
+              </span>
+              <span className={`font-black ${netQualityTenDayImpact >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                {netQualityTenDayImpact >= 0 
+                  ? `+₹${netQualityTenDayImpact.toLocaleString('en-IN')} ${isMr ? 'जादा फायदा' : 'Gain'}`
+                  : `-₹${Math.abs(netQualityTenDayImpact).toLocaleString('en-IN')} ${isMr ? 'नुकसान' : 'Loss'}`}
+              </span>
             </div>
           </div>
 
@@ -1006,22 +1454,32 @@ Guaranteed 10-day payment cycle & on-farm field support.
           </div>
         </div>
 
-        {/* Modal Footer / WhatsApp Share Action */}
-        <div className="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={handleCopyQuote}
-            className="px-3.5 sm:px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
-          >
-            {copiedQuote ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4" />}
-            <span>{copiedQuote ? (isMr ? 'तपशील कॉपी झाला!' : 'Copied!') : (isMr ? 'तपशील कॉपी' : 'Copy Slip')}</span>
-          </button>
+        {/* Modal Footer / Actions */}
+        <div className="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 shrink-0 flex-wrap">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
+            >
+              <X className="w-4 h-4 text-slate-500" />
+              <span>{isMr ? 'बंद करा (Close)' : 'Close'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyQuote}
+              className="px-3.5 sm:px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 transition-colors cursor-pointer text-xs"
+            >
+              {copiedQuote ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4" />}
+              <span>{copiedQuote ? (isMr ? 'कॉपी झाले!' : 'Copied!') : (isMr ? 'तपशील कॉपी' : 'Copy Slip')}</span>
+            </button>
+          </div>
 
           <a
             href={`https://wa.me/?text=${encodeURIComponent(getWhatsAppQuotation())}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-4 sm:px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-2 shadow-md shadow-emerald-600/25 transition-all cursor-pointer text-xs"
+            className="px-4 sm:px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-2 shadow-md shadow-emerald-600/25 transition-all cursor-pointer text-xs ml-auto"
           >
             <span>{isMr ? 'गवळ्याला व्हॉट्सॲपवर पाठवा' : 'Share on WhatsApp'}</span>
           </a>

@@ -671,8 +671,14 @@ FSSAI No: ${farmer.fssaiNumber || 'Pending'}
               <span className="font-black text-slate-900 dark:text-white">
                 {farmer.dailyMilkQuantity} Ltr/day
               </span>
-              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.2 rounded">
-                {farmer.milkType === 'Cow' ? (isMr ? 'गाय' : 'Cow') : farmer.milkType === 'Buffalo' ? (isMr ? 'म्हैस' : 'Buffalo') : (isMr ? 'दोन्ही' : 'Both')}
+              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                farmer.milkType === 'Cow'
+                  ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                  : farmer.milkType === 'Buffalo'
+                  ? 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300'
+                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+              }`}>
+                {farmer.milkType === 'Cow' ? (isMr ? '🐄 गाय' : 'Cow') : farmer.milkType === 'Buffalo' ? (isMr ? '🐃 म्हैस' : 'Buffalo') : (isMr ? '🐄+🐃 दोन्ही' : 'Both')}
               </span>
             </div>
 
@@ -688,6 +694,18 @@ FSSAI No: ${farmer.fssaiNumber || 'Pending'}
               {farmer.status}
             </span>
           </div>
+
+          {/* Breakdown for Both Milk Types */}
+          {farmer.milkType === 'Both' && (farmer.cowLitres !== undefined || farmer.buffaloLitres !== undefined) && (
+            <div className="flex items-center justify-between text-[10px] bg-white/70 dark:bg-slate-900/60 px-2 py-1 rounded-lg border border-emerald-100 dark:border-slate-700">
+              <span className="text-amber-800 dark:text-amber-300 font-bold">
+                🐄 {isMr ? 'गाय:' : 'Cow:'} {farmer.cowLitres ?? Math.round(farmer.dailyMilkQuantity * 0.6)}L (@₹{farmer.cowRate || '39.5'})
+              </span>
+              <span className="text-teal-800 dark:text-teal-300 font-bold">
+                🐃 {isMr ? 'म्हैस:' : 'Buf:'} {farmer.buffaloLitres ?? Math.round(farmer.dailyMilkQuantity * 0.4)}L (@₹{farmer.buffaloRate || '72.5'})
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 pt-0.5 border-t border-emerald-200/40 dark:border-slate-700/40">
             <span>

@@ -27,9 +27,20 @@ import {
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { StorageService } from '../../services/storageService';
+import { MPOStorageService } from '../../services/mpoStorageService';
 import { PDFService } from '../../services/pdfService';
 import { ExcelService } from '../../services/excelService';
-import { CallRecord, RouteItem, PendingTask, FollowUpItem, Farmer } from '../../types';
+import { CallRecord, RouteItem, PendingTask, FollowUpItem, Farmer, LinkCenter, CollectionCenter, CattleShedSurvey, TourPlanItem, InspectionRecord, CompetitorDairy, ProducerComplaint } from '../../types';
+import {
+  Building2,
+  Building,
+  ClipboardCheck,
+  ShieldAlert,
+  Target,
+  Bell,
+  LifeBuoy,
+  Camera,
+} from 'lucide-react';
 
 interface DashboardViewProps {
   onNewCall?: (farmer?: Farmer) => void;
@@ -74,6 +85,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'today' | 'all'>('today');
 
+  // MPO Performance Period
+  const [mpoPeriod, setMpoPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
+
+  // MPO Core States
+  const [linkCenters, setLinkCenters] = useState<LinkCenter[]>([]);
+  const [collectionCenters, setCollectionCenters] = useState<CollectionCenter[]>([]);
+  const [gothaSurveys, setGothaSurveys] = useState<CattleShedSurvey[]>([]);
+  const [tourPlans, setTourPlans] = useState<TourPlanItem[]>([]);
+  const [inspections, setInspections] = useState<InspectionRecord[]>([]);
+  const [competitors, setCompetitors] = useState<CompetitorDairy[]>([]);
+  const [complaints, setComplaints] = useState<ProducerComplaint[]>([]);
+
   const todayStr = new Date().toISOString().split('T')[0];
 
   const loadData = () => {
@@ -82,12 +105,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setFarmers(StorageService.getFarmers());
     setTasks(StorageService.getTasks());
     setFollowUps(StorageService.getFollowUps());
+
+    // MPO Data
+    setLinkCenters(MPOStorageService.getLinkCenters());
+    setCollectionCenters(MPOStorageService.getCollectionCenters());
+    setGothaSurveys(MPOStorageService.getGothaSurveys());
+    setTourPlans(MPOStorageService.getTourPlans());
+    setInspections(MPOStorageService.getInspections());
+    setCompetitors(MPOStorageService.getCompetitors());
+    setComplaints(MPOStorageService.getComplaints());
   };
 
   useEffect(() => {
     loadData();
     window.addEventListener('dairy_storage_updated', loadData);
-    return () => window.removeEventListener('dairy_storage_updated', loadData);
+    window.addEventListener('dairy_mpo_updated', loadData);
+    return () => {
+      window.removeEventListener('dairy_storage_updated', loadData);
+      window.removeEventListener('dairy_mpo_updated', loadData);
+    };
   }, []);
 
   // Filtered Calls based on Today / All
@@ -184,12 +220,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {/* Quick Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
+              onClick={() => triggerNavigate('producer_surveys')}
+              className="flex-1 sm:flex-none px-3.5 py-2 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-slate-950 text-xs font-black rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border border-teal-200/50"
+              title="Producer Survey & Online IoT Milk Device Dashboard"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>{language === 'mr' ? 'उत्पादक सर्वेक्षण व डिव्हाइस' : 'Surveys & Devices'}</span>
+            </button>
+
+            <button
+              onClick={() => triggerNavigate('producer_communication')}
+              className="flex-1 sm:flex-none px-3 py-2 bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              title="Producer Communication & Broadcast Call Tracker"
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+              <span>{language === 'mr' ? 'उत्पादक संपर्क मोहीम' : 'Producer Calls'}</span>
+            </button>
+
+            <button
+              onClick={() => triggerNavigate('daily_report')}
+              className="flex-1 sm:flex-none px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              title="Daily Work & Shift Report Generator"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>{language === 'mr' ? 'दैनिक अहवाल' : 'Daily Report'}</span>
+            </button>
+
+            <button
               onClick={() => triggerNavigate('plan')}
               className="flex-1 sm:flex-none px-3 py-2 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 text-xs font-bold rounded-xl border border-emerald-500/40 shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
               title="Daily Field Work & Tour Planner"
             >
               <Milestone className="w-3.5 h-3.5 text-emerald-300" />
               <span>{language === 'mr' ? 'दौरा नियोजन' : 'Tour Diary'}</span>
+            </button>
+
+            <button
+              onClick={() => triggerNavigate('rate_chart')}
+              className="flex-1 sm:flex-none px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 text-xs font-bold rounded-xl border border-emerald-400/40 shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              title="Permanent Master Rate Chart Configuration"
+            >
+              <Calculator className="w-3.5 h-3.5 text-emerald-300" />
+              <span>{language === 'mr' ? 'मास्टर दर पत्रक' : 'Rate Master'}</span>
             </button>
 
             <button
@@ -210,28 +282,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
 
             <button
-              onClick={() => triggerNewIncomingCall()}
-              className="flex-1 sm:flex-none px-3 py-2 bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-semibold rounded-xl border border-emerald-400/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-            >
-              <PhoneIncoming className="w-3.5 h-3.5" />
-              <span>{t('call.log_incoming')}</span>
-            </button>
-
-            <button
-              onClick={handleDownloadPDF}
+              onClick={() => triggerNavigate('download_center')}
               className="px-3 py-2 bg-emerald-900/60 hover:bg-emerald-900 text-emerald-100 text-xs font-semibold rounded-xl border border-emerald-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
-              title="Download Today PDF Report"
-            >
-              <FileText className="w-3.5 h-3.5 text-emerald-300" />
-              <span className="hidden md:inline">{t('dash.download_today_pdf')}</span>
-            </button>
-
-            <button
-              onClick={handleDownloadExcel}
-              className="px-2.5 py-2 bg-emerald-900/60 hover:bg-emerald-900 text-emerald-100 text-xs font-semibold rounded-xl border border-emerald-500/30 transition-all flex items-center gap-1 cursor-pointer"
-              title="Export Master Excel"
+              title="Open Download Center"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
+              <span className="hidden md:inline">{language === 'mr' ? 'डाउनलोड सेंटर' : 'Downloads'}</span>
             </button>
           </div>
         </div>
@@ -278,6 +334,186 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </button>
         </div>
       )}
+
+      {/* MPO Management Hub & Period Switcher */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 rounded-xl">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-800 dark:text-white text-base">
+                {language === 'mr' ? 'MPO फील्ड कामगिरी व सारांश' : 'MPO Field Performance & Operations Hub'}
+              </h3>
+              <p className="text-xs text-slate-500">
+                {language === 'mr' ? 'दैनिक, साप्ताहिक, मासिक व वार्षिक कामकाज विश्लेषण' : 'Comprehensive performance analytics & field compliance tracker'}
+              </p>
+            </div>
+          </div>
+
+          {/* Period Filter (Daily, Weekly, Monthly, Yearly) */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+            {(['daily', 'weekly', 'monthly', 'yearly'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setMpoPeriod(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
+                  mpoPeriod === p
+                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                {language === 'mr'
+                  ? p === 'daily' ? 'दैनिक' : p === 'weekly' ? 'साप्ताहिक' : p === 'monthly' ? 'मासिक' : 'वार्षिक'
+                  : p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* MPO KPI Cards Deck */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div
+            onClick={() => triggerNavigate('centers')}
+            className="p-3.5 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/70 dark:border-blue-900/40 rounded-xl cursor-pointer hover:border-blue-400 transition-all"
+          >
+            <div className="flex items-center justify-between text-blue-700 dark:text-blue-300 mb-1">
+              <span className="text-xs font-semibold">{language === 'mr' ? 'संकलन केंद्रे' : 'Centers'}</span>
+              <Building2 className="w-4 h-4" />
+            </div>
+            <div className="text-xl font-black text-slate-900 dark:text-white">
+              {collectionCenters.length}
+            </div>
+            <p className="text-[10px] text-slate-500">{linkCenters.length} Link Centers</p>
+          </div>
+
+          <div
+            onClick={() => triggerNavigate('gotha_surveys')}
+            className="p-3.5 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40 rounded-xl cursor-pointer hover:border-amber-400 transition-all"
+          >
+            <div className="flex items-center justify-between text-amber-700 dark:text-amber-300 mb-1">
+              <span className="text-xs font-semibold">{language === 'mr' ? 'गोठा सर्वेक्षणे' : 'Gotha Surveys'}</span>
+              <Building className="w-4 h-4" />
+            </div>
+            <div className="text-xl font-black text-slate-900 dark:text-white">
+              {gothaSurveys.length}
+            </div>
+            <p className="text-[10px] text-slate-500">
+              {gothaSurveys.reduce((acc, g) => acc + g.cowCount + g.buffaloCount, 0)} Cattle Total
+            </p>
+          </div>
+
+          <div
+            onClick={() => triggerNavigate('daily_tour_plan')}
+            className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-900/40 rounded-xl cursor-pointer hover:border-emerald-400 transition-all"
+          >
+            <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-300 mb-1">
+              <span className="text-xs font-semibold">{language === 'mr' ? 'दौरा भेटी (DTP)' : 'Tour Visits'}</span>
+              <Route className="w-4 h-4" />
+            </div>
+            <div className="text-xl font-black text-slate-900 dark:text-white">
+              {tourPlans.filter(t => t.status === 'Completed').length}/{tourPlans.length}
+            </div>
+            <p className="text-[10px] text-slate-500">
+              {tourPlans.filter(t => t.status === 'Scheduled').length} Scheduled
+            </p>
+          </div>
+
+          <div
+            onClick={() => triggerNavigate('inspections')}
+            className="p-3.5 bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/70 dark:border-purple-900/40 rounded-xl cursor-pointer hover:border-purple-400 transition-all"
+          >
+            <div className="flex items-center justify-between text-purple-700 dark:text-purple-300 mb-1">
+              <span className="text-xs font-semibold">{language === 'mr' ? 'ऑडिट / तपासणी' : 'Audits'}</span>
+              <ClipboardCheck className="w-4 h-4" />
+            </div>
+            <div className="text-xl font-black text-slate-900 dark:text-white">
+              {inspections.length}
+            </div>
+            <p className="text-[10px] text-slate-500">Quality Verified</p>
+          </div>
+
+          <div
+            onClick={() => triggerNavigate('fssai_compliance')}
+            className="p-3.5 bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200/70 dark:border-rose-900/40 rounded-xl cursor-pointer hover:border-rose-400 transition-all"
+          >
+            <div className="flex items-center justify-between text-rose-700 dark:text-rose-300 mb-1">
+              <span className="text-xs font-semibold">{language === 'mr' ? 'FSSAI मुदत अलर्ट' : 'FSSAI Alerts'}</span>
+              <ShieldAlert className="w-4 h-4" />
+            </div>
+            <div className="text-xl font-black text-rose-600 dark:text-rose-400">
+              {collectionCenters.filter(c => c.fssaiLicenseNumber && !c.isFssaiActive).length + 1}
+            </div>
+            <p className="text-[10px] text-slate-500">Renewals Pending</p>
+          </div>
+
+          <div
+            onClick={() => triggerNavigate('competitors')}
+            className="p-3.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer hover:border-slate-400 transition-all"
+          >
+            <div className="flex items-center justify-between text-slate-700 dark:text-slate-300 mb-1">
+              <span className="text-xs font-semibold">{language === 'mr' ? 'स्पर्धक डेअरी' : 'Competitors'}</span>
+              <Target className="w-4 h-4" />
+            </div>
+            <div className="text-xl font-black text-slate-900 dark:text-white">
+              {competitors.length}
+            </div>
+            <p className="text-[10px] text-slate-500">
+              Avg Cow: ₹{competitors.length > 0 ? (competitors.reduce((acc, c) => acc + c.cowMilkRate, 0) / competitors.length).toFixed(1) : 38}
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Launch Buttons for MPO */}
+        <div className="flex items-center gap-2 overflow-x-auto pt-1 pb-1 scrollbar-thin">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
+            {language === 'mr' ? 'जलद कृती:' : 'Quick Actions:'}
+          </span>
+          <button
+            onClick={() => triggerNavigate('mpo_attendance')}
+            className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 hover:bg-emerald-100 cursor-pointer"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>{language === 'mr' ? 'फील्ड हजेरी (GPS Selfie)' : 'MPO Attendance'}</span>
+          </button>
+          <button
+            onClick={() => triggerNavigate('centers')}
+            className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 hover:bg-blue-100 cursor-pointer"
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>{language === 'mr' ? '+ नवीन केंद्र नोंदवा' : '+ Add Center'}</span>
+          </button>
+          <button
+            onClick={() => triggerNavigate('gotha_surveys')}
+            className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 hover:bg-amber-100 cursor-pointer"
+          >
+            <Building className="w-3.5 h-3.5" />
+            <span>{language === 'mr' ? '+ गोठा सर्वेक्षण' : '+ Gotha Survey'}</span>
+          </button>
+          <button
+            onClick={() => triggerNavigate('inspections')}
+            className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 hover:bg-purple-100 cursor-pointer"
+          >
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            <span>{language === 'mr' ? '+ केंद्र तपासणी' : '+ New Audit'}</span>
+          </button>
+          <button
+            onClick={() => triggerNavigate('complaints_tasks')}
+            className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 hover:bg-rose-100 cursor-pointer"
+          >
+            <LifeBuoy className="w-3.5 h-3.5" />
+            <span>{language === 'mr' ? 'शेतकरी तक्रारी (' + complaints.filter(c => c.status !== 'Resolved').length + ')' : 'Grievances'}</span>
+          </button>
+          <button
+            onClick={() => triggerNavigate('notices')}
+            className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 hover:bg-slate-200 cursor-pointer"
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span>{language === 'mr' ? 'परिपत्रक' : 'Notices'}</span>
+          </button>
+        </div>
+      </div>
 
       {/* Main KPI Stat Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3.5">

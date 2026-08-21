@@ -2,7 +2,9 @@
   "name": "Procure Diary – Milk Procurement Executive CRM",
   "description": "Personal productivity and field management CRM for Milk Procurement Executives. Manage gavalis (गवळी), field calls, follow-ups, route visits, rate calculators, daily work planning, and procurement reports.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "geolocation",
+    "camera"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

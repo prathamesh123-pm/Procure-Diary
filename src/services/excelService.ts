@@ -49,6 +49,10 @@ export const ExcelService = {
         'Daily Milk Volume (L)': f.dailyMilkQuantity,
         'Morning Milk (L)': f.morningMilkQty || '-',
         'Evening Milk (L)': f.eveningMilkQty || '-',
+        'Cow Milk (L)': f.cowLitres || (f.milkType === 'Cow' ? f.dailyMilkQuantity : '-'),
+        'Cow Rate (₹/L)': f.cowRate || (f.milkType === 'Cow' ? f.currentRate : '-'),
+        'Buffalo Milk (L)': f.buffaloLitres || (f.milkType === 'Buffalo' ? f.dailyMilkQuantity : '-'),
+        'Buffalo Rate (₹/L)': f.buffaloRate || (f.milkType === 'Buffalo' ? f.currentRate : '-'),
         'Avg FAT %': f.avgFat || 3.8,
         'Avg SNF %': f.avgSNF || 8.5,
         'Rate (₹/L)': f.currentRate || 39.5,
@@ -258,5 +262,89 @@ export const ExcelService = {
       reader.onerror = error => reject(error);
       reader.readAsArrayBuffer(file);
     });
+  },
+
+  // Export Master Rate Chart to Multi-Sheet Excel Workbook
+  exportRateChartToExcel: (rateChart: any, filename = 'Master_Milk_Rate_Chart.xlsx') => {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: General Parameters
+    const summaryData = [
+      { Parameter: 'Rate Chart Version', Value: rateChart.versionTag || `v${rateChart.version}` },
+      { Parameter: 'Effective Date', Value: rateChart.effectiveDate },
+      { Parameter: 'Last Updated At', Value: rateChart.updatedAt },
+      { Parameter: 'Updated By', Value: `${rateChart.updatedBy?.name || 'Admin'} (${rateChart.updatedBy?.role || 'Admin'})` },
+      { Parameter: 'Revision Reason', Value: rateChart.changeReason || 'Official Rate Revision' },
+      { Parameter: 'Cow Base Rate (₹/L)', Value: rateChart.cowRateConfig.baseRate },
+      { Parameter: 'Cow Base Fat (%)', Value: rateChart.cowRateConfig.baseFat },
+      { Parameter: 'Cow Base SNF (%)', Value: rateChart.cowRateConfig.baseSnf },
+      { Parameter: 'Cow Incentive (₹/L)', Value: rateChart.cowRateConfig.incentivePerLitre },
+      { Parameter: 'Buffalo Base Rate (₹/L)', Value: rateChart.buffaloRateConfig.baseRate },
+      { Parameter: 'Buffalo Base Fat (%)', Value: rateChart.buffaloRateConfig.baseFat },
+      { Parameter: 'Buffalo Base SNF (%)', Value: rateChart.buffaloRateConfig.baseSnf },
+      { Parameter: 'Buffalo Incentive (₹/L)', Value: rateChart.buffaloRateConfig.incentivePerLitre },
+      { Parameter: 'Clean Milk Bonus (₹/L)', Value: rateChart.qualityIncentives.cleanlinessBonus },
+      { Parameter: 'Chilled Milk Bonus (₹/L)', Value: rateChart.qualityIncentives.coolingChillingBonus },
+      { Parameter: 'A2 Desi Cow Bonus (₹/L)', Value: rateChart.qualityIncentives.organicA2Bonus },
+      { Parameter: 'Transport Deduction (₹/L)', Value: rateChart.deductions.transportChargePerLitre },
+      { Parameter: 'Cattle Feed Fund Levy (₹/L)', Value: rateChart.deductions.cattleFeedLevyPerLitre },
+    ];
+    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Rate_Summary');
+
+    // Sheet 2: Cow Fat vs SNF Matrix
+    const cowMatrixData: any[] = [];
+    const cowFats = [3.0, 3.2, 3.4, 3.5, 3.6, 3.8, 4.0, 4.2, 4.5];
+    const cowSnfs = [8.0, 8.2, 8.4, 8.5, 8.6, 8.8, 9.0];
+
+    cowFats.forEach(f => {
+      const row: any = { 'Fat %': f.toFixed(1) };
+      cowSnfs.forEach(s => {
+        const fatDiff = Math.round((f - rateChart.cowRateConfig.baseFat) * 10);
+        const snfDiff = Math.round((s - rateChart.cowRateConfig.baseSnf) * 10);
+        const fatAdj = fatDiff >= 0 ? fatDiff * rateChart.cowRateConfig.fatIncrStep : fatDiff * rateChart.cowRateConfig.fatDecrStep;
+        const snfAdj = snfDiff >= 0 ? snfDiff * rateChart.cowRateConfig.snfIncrStep : snfDiff * rateChart.cowRateConfig.snfDecrStep;
+        const net = Math.max(0, rateChart.cowRateConfig.baseRate + fatAdj + snfAdj + rateChart.cowRateConfig.incentivePerLitre);
+        row[`SNF ${s.toFixed(1)}%`] = net.toFixed(2);
+      });
+      cowMatrixData.push(row);
+    });
+    const wsCow = XLSX.utils.json_to_sheet(cowMatrixData);
+    XLSX.utils.book_append_sheet(wb, wsCow, 'Cow_Rate_Matrix');
+
+    // Sheet 3: Buffalo Fat vs SNF Matrix
+    const buffaloMatrixData: any[] = [];
+    const buffFats = [5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0];
+    const buffSnfs = [8.5, 8.8, 9.0, 9.2, 9.5];
+
+    buffFats.forEach(f => {
+      const row: any = { 'Fat %': f.toFixed(1) };
+      buffSnfs.forEach(s => {
+        const fatDiff = Math.round((f - rateChart.buffaloRateConfig.baseFat) * 10);
+        const snfDiff = Math.round((s - rateChart.buffaloRateConfig.baseSnf) * 10);
+        const fatAdj = fatDiff >= 0 ? fatDiff * rateChart.buffaloRateConfig.fatIncrStep : fatDiff * rateChart.buffaloRateConfig.fatDecrStep;
+        const snfAdj = snfDiff >= 0 ? snfDiff * rateChart.buffaloRateConfig.snfIncrStep : snfDiff * rateChart.buffaloRateConfig.snfDecrStep;
+        const net = Math.max(0, rateChart.buffaloRateConfig.baseRate + fatAdj + snfAdj + rateChart.buffaloRateConfig.incentivePerLitre);
+        row[`SNF ${s.toFixed(1)}%`] = net.toFixed(2);
+      });
+      buffaloMatrixData.push(row);
+    });
+    const wsBuffalo = XLSX.utils.json_to_sheet(buffaloMatrixData);
+    XLSX.utils.book_append_sheet(wb, wsBuffalo, 'Buffalo_Rate_Matrix');
+
+    // Sheet 4: Volume Bonus Slabs
+    if (rateChart.volumeSlabs && rateChart.volumeSlabs.length > 0) {
+      const slabsData = rateChart.volumeSlabs.map((s: any, idx: number) => ({
+        'Slab #': idx + 1,
+        'Slab Name': s.slabName,
+        'Min Litres': s.minLitres,
+        'Max Litres': s.maxLitres > 10000 ? 'Unlimited' : s.maxLitres,
+        'Bonus (₹/L)': s.bonusPerLitre,
+      }));
+      const wsSlabs = XLSX.utils.json_to_sheet(slabsData);
+      XLSX.utils.book_append_sheet(wb, wsSlabs, 'Volume_Bonus_Slabs');
+    }
+
+    XLSX.writeFile(wb, filename);
   },
 };

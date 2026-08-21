@@ -15,14 +15,32 @@ import { LoginView } from './components/auth/LoginView';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { CallRegisterView } from './components/calls/CallRegisterView';
 import { IncomingCallView } from './components/calls/IncomingCallView';
+import { CallHistoryView } from './components/calls/CallHistoryView';
 import { FarmerMasterView } from './components/farmers/FarmerMasterView';
 import { RouteManagementView } from './components/routes/RouteManagementView';
 import { TaskManagementView } from './components/tasks/TaskManagementView';
 import { FollowUpView } from './components/followups/FollowUpView';
 import { ReportsAnalyticsView } from './components/reports/ReportsAnalyticsView';
+import { DailyWorkReportGeneratorView } from './components/reports/DailyWorkReportGeneratorView';
+import { DownloadCenterView } from './components/downloads/DownloadCenterView';
+import { ActivityTrackingView } from './components/admin/ActivityTrackingView';
+import { AdminMonitoringDashboard } from './components/admin/AdminMonitoringDashboard';
 import { UserManagementView } from './components/admin/UserManagementView';
 import { DailyWorkPlanView } from './components/plan/DailyWorkPlanView';
 import { RateCalculatorModal } from './components/calculator/RateCalculatorModal';
+import { RateChartMasterView } from './components/calculator/RateChartMasterView';
+import { ProducerCommunicationView } from './components/calls/ProducerCommunicationView';
+import { ProducerSurveyDashboardView } from './components/surveys/ProducerSurveyDashboardView';
+import { CenterManagementView } from './components/centers/CenterManagementView';
+import { GothaSurveyView } from './components/gotha/GothaSurveyView';
+import { DailyTourPlanView } from './components/tour/DailyTourPlanView';
+import { MPOAttendanceView } from './components/attendance/MPOAttendanceView';
+import { InspectionAuditView } from './components/inspections/InspectionAuditView';
+import { FssaiComplianceView } from './components/fssai/FssaiComplianceView';
+import { CompetitorManagementView } from './components/competitors/CompetitorManagementView';
+import { NoticeBroadcastView } from './components/notices/NoticeBroadcastView';
+import { ComplaintTaskManagementView } from './components/complaints/ComplaintTaskManagementView';
+import { BackupService } from './services/backupService';
 
 // Call Form Modal
 import { CallFormModal } from './components/calls/CallFormModal';
@@ -56,6 +74,9 @@ const MainAppContent: React.FC = () => {
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    // Auto-scheduled backup check
+    BackupService.checkAndTriggerAutoBackup();
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -197,19 +218,47 @@ const MainAppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'plan' && <DailyWorkPlanView />}
+          {activeTab === 'centers' && <CenterManagementView />}
+
+          {activeTab === 'gotha_surveys' && <GothaSurveyView />}
+
+          {activeTab === 'daily_tour_plan' && <DailyTourPlanView />}
+
+          {activeTab === 'mpo_attendance' && <MPOAttendanceView />}
+
+          {activeTab === 'inspections' && <InspectionAuditView />}
+
+          {activeTab === 'fssai_compliance' && <FssaiComplianceView />}
+
+          {activeTab === 'competitors' && <CompetitorManagementView />}
+
+          {activeTab === 'notices' && <NoticeBroadcastView />}
+
+          {activeTab === 'complaints_tasks' && <ComplaintTaskManagementView />}
+
+          {activeTab === 'daily_report' && <DailyWorkReportGeneratorView />}
+
+          {activeTab === 'plan' && <DailyTourPlanView />}
 
           {activeTab === 'calls' && (
             <CallRegisterView onSelectFarmer={f => handleOpenNewCall('outgoing', f)} />
+          )}
+
+          {activeTab === 'producer_communication' && (
+            <ProducerCommunicationView currentUser={currentUser || undefined} isAdmin={currentUser?.role === 'admin'} />
           )}
 
           {activeTab === 'incoming' && (
             <IncomingCallView onSelectFarmer={f => handleOpenNewCall('incoming', f)} />
           )}
 
+          {activeTab === 'call_history' && <CallHistoryView />}
+
           {activeTab === 'farmers' && (
             <FarmerMasterView onNewCallForFarmer={f => handleOpenNewCall('outgoing', f)} />
           )}
+
+          {activeTab === 'producer_surveys' && <ProducerSurveyDashboardView />}
 
           {activeTab === 'routes' && <RouteManagementView />}
 
@@ -217,7 +266,17 @@ const MainAppContent: React.FC = () => {
 
           {activeTab === 'followups' && <FollowUpView />}
 
+          {activeTab === 'rate_chart' && (
+            <RateChartMasterView onBack={() => setActiveTab('dashboard')} />
+          )}
+
+          {activeTab === 'download_center' && <DownloadCenterView />}
+
           {activeTab === 'reports' && <ReportsAnalyticsView />}
+
+          {activeTab === 'activity_log' && <ActivityTrackingView />}
+
+          {activeTab === 'admin_monitoring' && <AdminMonitoringDashboard />}
 
           {activeTab === 'users' && <UserManagementView />}
         </main>

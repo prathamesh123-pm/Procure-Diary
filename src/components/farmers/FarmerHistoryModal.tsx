@@ -264,14 +264,59 @@ export const FarmerHistoryModal: React.FC<FarmerHistoryModalProps> = ({
                     <Milk className="w-4 h-4 text-emerald-600" />
                     <span>{isMr ? 'दूध संकलन व गुणवत्ता तपशील' : 'Milk Collection & Quality Parameters'}</span>
                   </h4>
-                  <span className="text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded">
-                    {farmer.milkType} Milk
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                    farmer.milkType === 'Cow'
+                      ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                      : farmer.milkType === 'Buffalo'
+                      ? 'bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300'
+                      : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                  }`}>
+                    {farmer.milkType === 'Cow' ? (isMr ? '🐄 गायीचे दूध' : 'Cow Milk') : farmer.milkType === 'Buffalo' ? (isMr ? '🐃 म्हशीचे दूध' : 'Buffalo Milk') : (isMr ? '🐄+🐃 दोन्ही (Cow & Buffalo)' : 'Both')}
                   </span>
                 </div>
 
+                {/* If Both, show subcard breakdown */}
+                {farmer.milkType === 'Both' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="p-2.5 bg-amber-50/80 dark:bg-amber-950/30 rounded-xl border border-amber-200/70 dark:border-amber-900/50 space-y-1">
+                      <div className="flex items-center justify-between font-bold text-amber-900 dark:text-amber-300">
+                        <span>🐄 {isMr ? 'गायीचे दूध (Cow)' : 'Cow Milk'}</span>
+                        <span>{farmer.cowLitres ?? Math.round(farmer.dailyMilkQuantity * 0.6)} L/day</span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400 flex justify-between">
+                        <span>{farmer.cowFat || 3.8}% FAT | {farmer.cowSNF || 8.5}% SNF</span>
+                        <span className="font-bold text-emerald-700 dark:text-emerald-400">₹{farmer.cowRate || 39.5}/L</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 pt-0.5 border-t border-amber-200/50 flex justify-between">
+                        <span>{isMr ? '१० दिवसांचे बिल:' : '10-day:'}</span>
+                        <strong className="text-emerald-700 dark:text-emerald-400">
+                          ₹{((farmer.cowLitres ?? Math.round(farmer.dailyMilkQuantity * 0.6)) * (farmer.cowRate || 39.5) * 10).toLocaleString('en-IN')}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 bg-teal-50/80 dark:bg-teal-950/30 rounded-xl border border-teal-200/70 dark:border-teal-900/50 space-y-1">
+                      <div className="flex items-center justify-between font-bold text-teal-900 dark:text-teal-300">
+                        <span>🐃 {isMr ? 'म्हशीचे दूध (Buffalo)' : 'Buffalo Milk'}</span>
+                        <span>{farmer.buffaloLitres ?? Math.round(farmer.dailyMilkQuantity * 0.4)} L/day</span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400 flex justify-between">
+                        <span>{farmer.buffaloFat || 7.0}% FAT | {farmer.buffaloSNF || 9.0}% SNF</span>
+                        <span className="font-bold text-emerald-700 dark:text-emerald-400">₹{farmer.buffaloRate || 72.5}/L</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 pt-0.5 border-t border-teal-200/50 flex justify-between">
+                        <span>{isMr ? '१० दिवसांचे बिल:' : '10-day:'}</span>
+                        <strong className="text-emerald-700 dark:text-emerald-400">
+                          ₹{((farmer.buffaloLitres ?? Math.round(farmer.dailyMilkQuantity * 0.4)) * (farmer.buffaloRate || 72.5) * 10).toLocaleString('en-IN')}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                   <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-700">
-                    <span className="text-[10px] text-slate-400 block">{isMr ? 'दैनिक संकलन' : 'Daily Volume'}</span>
+                    <span className="text-[10px] text-slate-400 block">{isMr ? 'एकूण दैनिक संकलन' : 'Total Daily'}</span>
                     <span className="font-black text-slate-900 dark:text-white text-sm">{farmer.dailyMilkQuantity} L</span>
                   </div>
                   <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-700">
@@ -287,7 +332,7 @@ export const FarmerHistoryModal: React.FC<FarmerHistoryModalProps> = ({
                     </span>
                   </div>
                   <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-700">
-                    <span className="text-[10px] text-slate-400 block">{isMr ? 'खरेदी दर' : 'Procure Rate'}</span>
+                    <span className="text-[10px] text-slate-400 block">{isMr ? 'दर / सरासरी दर' : 'Rate'}</span>
                     <span className="font-black text-emerald-700 dark:text-emerald-300">₹{farmer.currentRate || 39.5}/L</span>
                   </div>
                 </div>
